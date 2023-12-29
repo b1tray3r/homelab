@@ -1,0 +1,59 @@
+---
+- name: Prepare labels for traefik
+  block:
+    - name: Set labels
+      set_fact:
+        portainer_labels: "{{ portainer_labels | default({}) | combine ({ item.key : item.value }) }}"
+      with_items:
+        - { "key": "traefik.enable", "value": "true" }
+        - {
+            "key": "traefik.docker.network",
+            "value": "{{ PORTAINER_PROXY_NETWORK }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PORTAINER_PROXY_ID }}.rule",
+            "value": "Host(`{{ PORTAINER_PROXY_HOST }}`)",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PORTAINER_PROXY_ID }}.entrypoints",
+            "value": "websecure",
+          }
+        - {
+            "key": "traefik.http.services.{{ PORTAINER_PROXY_ID }}.loadbalancer.server.port",
+            "value": "9000",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PORTAINER_PROXY_ID }}.service",
+            "value": "{{ PORTAINER_PROXY_ID }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PORTAINER_PROXY_ID }}.tls.certresolver",
+            "value": "letsencrypt",
+          }
+  when: PORTAINER_USE_TRAEFIK | bool
+
+- name: Create the network
+  docker_network:
+    name: "{{ PORTAINER_PROXY_NETWORK }}"
+    attachable: true
+  when: not PORTAINER_USE_TRAEFIK | bool
+
+- name: Start portainer container
+  docker_container:
+    name: portainer
+    image: cr.portainer.io/portainer/portainer-ce:latest
+    state: started
+    restart_policy: always
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: compatibility
+    ports:
+      - "9000:9000"
+    env:
+      "HOSTNAME": "{{ PORTAINER_PROXY_HOST }}"
+    networks:
+      - name: "{{ PORTAINER_PROXY_NETWORK }}"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "{{ PORTAINER_VOLUME }}:/data"
+    labels: "{{ portainer_labels | default({}) }}"

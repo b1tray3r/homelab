@@ -1,0 +1,19 @@
+---
+http:
+  routers:
+{% for item in TRAEFIK_STATIC_ROUTES %}
+    {{ item.name }}-route:
+      entryPoints:
+        - websecure
+      rule: "{{ item.rule}}"
+      service: "{{ item.name }}-service"
+      tls:
+        certresolver: letsencrypt
+{% endfor %}
+  services:
+{% for item in TRAEFIK_STATIC_ROUTES %}
+    {{ item.name }}-service:
+      loadBalancer:
+        servers:
+          - url: {{ item.url }}
+{% endfor %}

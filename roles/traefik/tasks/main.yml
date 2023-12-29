@@ -1,0 +1,96 @@
+---
+
+- name: Create the proxy network
+  docker_network:
+    name: "{{ TRAEFIK_PROXY_NETWORK }}"
+    attachable: true
+
+- name: Create a volume for the traefik letsencrypt storage
+  docker_volume:
+    name: "{{ TRAEFIK_LETSENCRYPT_VOLUME }}"
+  register: traefik_letsencrypt_volume
+
+- name: Set labels
+  set_fact:
+    traefik_labels: "{{ traefik_labels | default({}) | combine ({ item.key : item.value }) }}"
+  with_items:
+    - {
+        "key": "traefik.enable",
+        "value": "true"
+      }
+    - {
+        "key": "traefik.docker.network",
+        "value": "{{ TRAEFIK_PROXY_NETWORK }}",
+      }
+    - {
+        "key": "traefik.http.routers.{{ TRAEFIK_PROXY_ID }}-secure.entrypoints",
+        "value": "websecure",
+      }
+    - {
+        "key": "traefik.http.routers.{{ TRAEFIK_PROXY_ID }}-secure.tls",
+        "value": "true",
+      }
+    - {
+        "key": "traefik.http.routers.{{ TRAEFIK_PROXY_ID }}-secure.tls.certresolver",
+        "value": "letsencrypt",
+      }
+    - {
+        "key": "traefik.http.routers.{{ TRAEFIK_PROXY_ID }}-secure.rule",
+        "value": "Host(`{{ TRAEFIK_PROXY_HOST }}`)",
+      }
+    - {
+        "key": "traefik.http.routers.{{ TRAEFIK_PROXY_ID }}-secure.service",
+        "value": "api@internal",
+      }
+    - {
+        "key": "traefik.http.routers.{{ TRAEFIK_PROXY_ID }}-secure.tls.options",
+        "value": "default",
+      }
+
+- name: touch the acme.json file
+  file:
+    path: "{{ traefik_letsencrypt_volume.volume.Mountpoint }}/acme.json"
+    state: touch
+    mode: 0600
+
+- name: touch the routes.yml file
+  file:
+    path: "{{ traefik_letsencrypt_volume.volume.Mountpoint }}/routes.yml"
+    state: touch
+    mode: 0600
+
+- name: render the template routes.yml.j2 if TRAEFIK_STATIC_ROUTES has elements
+  template:
+    src: routes.yml.j2
+    dest: "{{ traefik_letsencrypt_volume.volume.Mountpoint }}/routes.yml"
+    mode: 0600
+  when: TRAEFIK_STATIC_ROUTES is defined
+
+- name: define default volumes
+  set_fact:
+    traefik_volumes: "{{ traefik_volumes | default([]) + [item] }}"
+  with_items:
+    - "/etc/localtime:/etc/localtime:ro"
+    - "/var/run/docker.sock:/var/run/docker.sock"
+    - "{{ traefik_letsencrypt_volume.volume.Mountpoint }}/acme.json:/acme.json"
+    - "{{ traefik_letsencrypt_volume.volume.Mountpoint }}/routes.yml:/etc/traefik/routes.yml"
+
+- name: Start the traefik container
+  docker_container:
+    name: traefik
+    image: traefik:latest
+    command: "{{ TRAEFIK_COMMAND }}"
+    restart: "yes"
+    state: started
+    restart_policy: always
+    env: "{{ TRAEFIK_ENVIRONMENT }}"
+    volumes: "{{ traefik_volumes }}"
+    ports:
+      - "80:80"
+      - "443:443"
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "{{ TRAEFIK_PROXY_NETWORK }}"
+    labels: "{{ traefik_labels }}"

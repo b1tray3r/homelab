@@ -1,0 +1,6 @@
+---
+PORTAINER_VOLUME: portainer
+PORTAINER_PROXY_ID: portainer
+PORTAINER_PROXY_NETWORK: traefik
+PORTAINER_PROXY_HOST: portainer.localhost
+PORTAINER_USE_TRAEFIK: true

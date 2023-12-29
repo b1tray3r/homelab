@@ -1,0 +1,5 @@
+---
+PRISM_PROXY_ID: prism
+PRISM_PROXY_NETWORK: traefik
+PRISM_PROXY_HOST: prism.localhost
+PRISM_USE_TRAEFIK: true
