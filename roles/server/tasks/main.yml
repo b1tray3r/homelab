@@ -1,0 +1,88 @@
+---
+- name: update Ubuntu OS
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+    upgrade: dist
+  
+- name: Check if reboot is required.
+  stat:
+    path: /var/run/reboot-required
+  register: reboot_required
+
+- debug:
+    msg: "Reboot is required!!!"
+  when: reboot_required.stat.exists
+
+- name: Reboot host(s).
+  ansible.builtin.reboot:
+    reboot_timeout: "{{ PATCHING_REBOOT_TIMEOUT }}"
+    post_reboot_delay: "{{ PATCHING_POST_REBOOT_DELAY }}"
+    pre_reboot_delay: "{{ PATCHING_PRE_REBOOT_DELAY }}"
+  when: reboot_required.stat.exists and PATCHING_REBOOT_ENABLED
+
+- name: install basic packages
+  ansible.builtin.apt:
+    pkg:
+      - progress
+      - btop
+      - neovim
+      - git
+      - curl
+      - wget
+      - htop
+      - xfsprogs
+      - nfs-kernel-server
+      - samba
+
+- name: cleanup apt and OS
+  ansible.builtin.apt:
+    autoremove: yes
+    autoclean: yes
+
+- name: create mount points
+  ansible.builtin.file:
+    path: "{{ item.destination }}"
+    state: directory
+    mode: 0755
+  with_items: "{{ SERVER_DRIVES | default([]) }}"
+
+- name: mount drives
+  ansible.posix.mount:
+    path: "{{ item.destination }}"
+    fstype: "{{ item.fstype }}"
+    state: "{{ item.state }}"
+    src: "{{ item.device }}"
+  with_items: "{{ SERVER_DRIVES | default([]) }}"
+
+- name: create nfs exports
+  ansible.builtin.lineinfile:
+    path: /etc/exports
+    line: "{{ item.destination }} *(rw,sync,no_subtree_check,no_root_squash)"
+    state: present
+  with_items: "{{ SERVER_DRIVES | default([]) }}"
+
+- name: restart nfs server
+  ansible.builtin.service:
+    name: nfs-kernel-server
+    state: restarted
+
+- name: copy the smb.conf file
+  ansible.builtin.copy:
+    src: files/smb.conf
+    dest: /etc/samba/smb.conf
+    owner: root
+    group: root
+    mode: 0644
+
+- name: restart samba server
+  ansible.builtin.service:
+    name: smbd
+    state: restarted
+
+- name: change default port for pihole admin page
+  ansible.builtin.lineinfile:
+    path: /etc/lighttpd/lighttpd.conf
+    regexp: '^server.port'
+    line: 'server.port = 81'
+    state: present

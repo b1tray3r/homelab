@@ -1,0 +1,117 @@
+---
+
+- name: Prepare labels for traefik
+  block:
+    - name: Set labels
+      set_fact:
+        paperless_labels: "{{ paperless_labels | default({}) | combine ({ item.key : item.value }) }}"
+      with_items:
+        - { "key": "traefik.enable", "value": "true" }
+        - {
+            "key": "traefik.docker.network",
+            "value": "{{ PAPERLESS_PROXY_NETWORK }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PAPERLESS_PROXY_ID }}.rule",
+            "value": "Host(`{{ PAPERLESS_PROXY_HOST }}`)",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PAPERLESS_PROXY_ID }}.entrypoints",
+            "value": "websecure",
+          }
+        - {
+            "key": "traefik.http.services.{{ PAPERLESS_PROXY_ID }}.loadbalancer.server.port",
+            "value": "8000",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PAPERLESS_PROXY_ID }}.service",
+            "value": "{{ PAPERLESS_PROXY_ID }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PAPERLESS_PROXY_ID }}.tls.certresolver",
+            "value": "letsencrypt",
+          }
+  when: PAPERLESS_USE_TRAEFIK | bool
+
+- name: Create the network
+  docker_network:
+    name: "{{ PAPERLESS_PROXY_NETWORK }}"
+    attachable: true
+  when: not PAPERLESS_USE_TRAEFIK | bool
+
+- name: Create the "internal"
+  docker_network:
+    name: "internal"
+    attachable: true
+
+- name: create the database folder
+  file:
+    path: /storage/2tb1/services/prism/database
+    state: directory
+
+- name: create the paperless-ngx network
+  docker_network:
+    name: paperless-ngx
+    attachable: true
+
+- name: create a paperless-redis volume
+  docker_volume:
+    name: paperless-redis
+    state: present
+  
+- name: create a paperless-redis container
+  docker_container:
+    name: paperless-redis
+    image: redis:7
+    restart: true
+    state: started
+    restart_policy: always
+    volumes:
+      - "paperless-redis:/data"
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "paperless-ngx"
+
+- name: create a paperless-database container
+  docker_container:
+    name: paperless-database
+    image: mariadb:10.11
+    restart: true
+    state: started
+    restart_policy: always
+    security_opts:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: mariadbd --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    volumes:
+      - "/storage/2tb1/services/paperless/database:/var/lib/mysql"
+    env: "{{ PAPERLESS_DATABASE_ENV }}"
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "paperless-ngx"
+
+- name: create a paperless container
+  docker_container:
+    name: paperless-app
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: true
+    state: started
+    restart_policy: always
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - "/storage/2tb1/services/paperless/storage:/usr/src/paperless/data"
+      - "/storage/4tb2/appdata/paperless/export:/usr/src/paperless/export"
+      - "/storage/4tb2/appdata/paperless/import:/usr/src/paperless/consume"
+      - "/storage/4tb2/appdata/paperless/media:/usr/src/paperless/media"
+    env: "{{ PAPERLESS_ENV }}"
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "paperless-ngx"
+      - name: "{{ PAPERLESS_PROXY_NETWORK }}"
+    labels: "{{ paperless_labels }}"

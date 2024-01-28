@@ -1,0 +1,72 @@
+---
+- name: Prepare labels for traefik
+  block:
+    - name: Set labels
+      set_fact:
+        homarr_labels: "{{ homarr_labels | default({}) | combine ({ item.key : item.value }) }}"
+      with_items:
+        - { "key": "traefik.enable", "value": "true" }
+        - {
+            "key": "traefik.docker.network",
+            "value": "{{ HOMARR_PROXY_NETWORK }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ HOMARR_PROXY_ID }}.rule",
+            "value": "Host(`{{ HOMARR_PROXY_HOST }}`)",
+          }
+        - {
+            "key": "traefik.http.routers.{{ HOMARR_PROXY_ID }}.entrypoints",
+            "value": "websecure",
+          }
+        - {
+            "key": "traefik.http.services.{{ HOMARR_PROXY_ID }}.loadbalancer.server.port",
+            "value": "7575",
+          }
+        - {
+            "key": "traefik.http.routers.{{ HOMARR_PROXY_ID }}.service",
+            "value": "{{ HOMARR_PROXY_ID }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ HOMARR_PROXY_ID }}.tls.certresolver",
+            "value": "letsencrypt",
+          }
+  when: HOMARR_USE_TRAEFIK | bool
+
+- name: Create the network
+  docker_network:
+    name: "{{ HOMARR_PROXY_NETWORK }}"
+    attachable: true
+  when: not HOMARR_USE_TRAEFIK | bool
+
+- name: Create the "internal"
+  docker_network:
+    name: "internal"
+    attachable: true
+
+- name: create the storage folder
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - /storage/2tb1/services/homarr/storage
+
+- name: start the HOMARR app
+  docker_container:
+    name: homarr-app
+    image: ghcr.io/ajnart/homarr:latest
+    state: started
+    restart_policy: always
+    restart: true
+    env: "{{ HOMARR_ENVIRONMENT }}"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "/storage/2tb1/services/homarr/storage:/app/data/configs"
+      - "/storage/2tb1/services/homarr/data:/data"
+      - "/storage/2tb1/services/homarr/icons:/app/public/icons"
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "internal"
+      - name: "{{ HOMARR_PROXY_NETWORK }}"
+    labels: "{{ homarr_labels }}"

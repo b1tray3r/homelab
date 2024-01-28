@@ -1,0 +1,91 @@
+---
+
+- name: Prepare labels for traefik
+  block:
+    - name: Set labels
+      set_fact:
+        prism_labels: "{{ prism_labels | default({}) | combine ({ item.key : item.value }) }}"
+      with_items:
+        - { "key": "traefik.enable", "value": "true" }
+        - {
+            "key": "traefik.docker.network",
+            "value": "{{ PRISM_PROXY_NETWORK }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PRISM_PROXY_ID }}.rule",
+            "value": "Host(`{{ PRISM_PROXY_HOST }}`)",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PRISM_PROXY_ID }}.entrypoints",
+            "value": "websecure",
+          }
+        - {
+            "key": "traefik.http.services.{{ PRISM_PROXY_ID }}.loadbalancer.server.port",
+            "value": "2342",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PRISM_PROXY_ID }}.service",
+            "value": "{{ PRISM_PROXY_ID }}",
+          }
+        - {
+            "key": "traefik.http.routers.{{ PRISM_PROXY_ID }}.tls.certresolver",
+            "value": "letsencrypt",
+          }
+  when: PRISM_USE_TRAEFIK | bool
+
+- name: Create the network
+  docker_network:
+    name: "{{ PRISM_PROXY_NETWORK }}"
+    attachable: true
+  when: not PRISM_USE_TRAEFIK | bool
+
+- name: Create the "internal"
+  docker_network:
+    name: "internal"
+    attachable: true
+
+- name: create the database folder
+  file:
+    path: /storage/2tb1/services/prism/database
+    state: directory
+
+- name: start the prism db
+  docker_container:
+    name: prism-db
+    image: mariadb:10
+    restart: "yes"
+    state: started
+    restart_policy: always
+    security_opts:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: mariadbd --innodb-buffer-pool-size=512M --transaction-isolation=READ-COMMITTED --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=512 --innodb-rollback-on-timeout=OFF --innodb-lock-wait-timeout=120
+    volumes:
+      - "/storage/2tb1/services/prism/database:/var/lib/mysql"
+    env: "{{ PRISM_DATABASE_ENV }}"
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "internal"
+
+- name: start the prism app
+  docker_container:
+    name: prism-app
+    image: photoprism/photoprism:latest
+    state: started
+    restart_policy: always
+    env: "{{ PRISM_ENVIRONMENT }}"
+    volumes:
+      - "/storage/2tb1/services/prism/storage:/photoprism/storage"
+      - "/storage/4tb2/appdata/prism/originals/:/photoprism/originals"
+      - "/storage/4tb2/appdata/prism/import/:/photoprism/import"
+    ports:
+      - 2342:2342
+    network_mode: default
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    networks:
+      - name: "internal"
+      - name: "{{ PRISM_PROXY_NETWORK }}"
+    labels: "{{ prism_labels }}"

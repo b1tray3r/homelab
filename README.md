@@ -1,1 +1,3 @@
-# homelab
+# My homelab server
+
+## TODOs

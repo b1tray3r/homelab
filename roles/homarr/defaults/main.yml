@@ -1,0 +1,7 @@
+---
+HOMARR_PROXY_ID: homarr
+HOMARR_PROXY_NETWORK: traefik
+HOMARR_PROXY_HOST: homarr.localhost
+HOMARR_USE_TRAEFIK: true
+
+HOMARR_ENVIRONMENT: {}

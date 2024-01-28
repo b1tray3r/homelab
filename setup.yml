@@ -1,0 +1,12 @@
+---
+- hosts: all
+  roles:
+    #- server
+    #- geerlingguy.pip
+    #- geerlingguy.docker
+    - traefik
+    #- portainer
+    #- prism
+    #- jellyfin
+    #- paperless-ngx
+    #- homarr

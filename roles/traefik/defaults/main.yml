@@ -1,0 +1,30 @@
+---
+
+TRAEFIK_PROXY_NETWORK: "traefik"
+TRAEFIK_PROXY_ID: "traefik"
+TRAEFIK_PROXY_HOST: "proxy.localhost"
+TRAEFIK_LETSENCRYPT_EMAIL: "user@email.fake"
+TRAEFIK_LETSENCRYPT_VOLUME: "traefik_letsencrypt"
+TRAEFIK_HTPASSWD_USER: "admin"
+TRAEFIK_HTPASSWD_HASH: "$apr1$el36fcrw$7yJo3pktA43gKJbouvxDc0" # = insecure
+TRAEFIK_IONOS_API_KEY : "token-prefix.token-secret"
+
+TRAEFIK_ENVIRONMENT:
+  IONOS_API_KEY: "{{ TRAEFIK_IONOS_API_KEY }}"
+
+TRAEFIK_COMMAND:
+  - --log.level=DEBUG
+  - --api.insecure=false
+  - --api.dashboard=true
+  - --providers.docker=true
+  - --providers.docker.exposedbydefault=false
+  - --entrypoints.web=true
+  - --entrypoints.web.address=:80
+  - --entrypoints.web.http.redirections.entrypoint.to=websecure
+  - --entrypoints.web.http.redirections.entrypoint.scheme=https
+  - --entrypoints.websecure=true
+  - --entrypoints.websecure.address=:443
+  - --certificatesresolvers.letsencrypt.acme.email={{ TRAEFIK_LETSENCRYPT_EMAIL }}
+  - --certificatesresolvers.letsencrypt.acme.storage=/acme.json
+  - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=ionos
+  - --certificatesresolvers.letsencrypt.acme.dnschallenge.delayBeforeCheck=0

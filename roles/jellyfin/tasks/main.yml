@@ -1,0 +1,32 @@
+---
+
+- name: create the database folder
+  file:
+    path: "{{ item }}"
+    state: directory
+  with_items:
+    - /storage/2tb1/services/jellyfin/storage
+    - /storage/2tb1/services/jellyfin/cache
+
+- name: start the jellyfin app
+  docker_container:
+    name: jellyfin-app
+    image: jellyfin/jellyfin
+    state: started
+    restart_policy: always
+    env: "{{ JELLYFIN_ENVIRONMENT }}"
+    user: "1000:100"
+    restart: true
+    volumes:
+      - "/storage/2tb1/services/jellyfin/storage:/config"
+      - "/storage/2tb1/services/jellyfin/cache:/cache"
+      - "/storage/8tb1/movies:/movies"
+      - "/storage/8tb1/private:/private"
+      - "/storage/8tb2/series:/series"
+      - "/storage/4tb1/nextcloud/Books:/books"
+      - "/storage/4tb1/nextcloud/Musik:/music"
+    network_mode: host
+    networks_cli_compatible: true
+    container_default_behavior: no_defaults
+    etc_hosts:
+      host.docker.internal: "host-gateway"
